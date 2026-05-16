@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: streamvault-dispatcher
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: ADMIN_API_KEY
+        sync: false
+      - key: GH_WORKFLOW_FILE
+        value: process.yml
+      - key: GH_WORKFLOW_REF
+        value: main
+      - key: GH_ACCOUNT_1_TOKEN
+        sync: false
+      - key: GH_ACCOUNT_1_OWNER
+        sync: false
+      - key: GH_ACCOUNT_1_REPO
+        sync: false
+      - key: GH_ACCOUNT_2_TOKEN
+        sync: false
+      - key: GH_ACCOUNT_2_OWNER
+        sync: false
+      - key: GH_ACCOUNT_2_REPO
+        sync: false
+      # Injectado automaticamente pelo Render — activa o keep-alive
+      - key: RENDER_EXTERNAL_URL
+        fromService:
+          type: web
+          name: streamvault-dispatcher
+          property: host
