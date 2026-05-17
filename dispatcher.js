@@ -25,6 +25,22 @@ import express from 'express';
 const app  = express();
 app.use(express.json({ limit: '1mb' }));
 
+// ── CORS — permite chamadas do painel admin (pages.dev e domínio próprio) ────
+app.use((req, res, next) => {
+  const allowed = [
+    'https://streamvault-admin.pages.dev',
+    'https://pixgo.qzz.io',
+  ];
+  const origin = req.headers.origin || '';
+  if (allowed.includes(origin) || !origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-api-key');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
 const PORT          = parseInt(process.env.PORT || process.env.DISPATCHER_PORT || '3002');
 const WORKFLOW_FILE = process.env.GH_WORKFLOW_FILE || 'process.yml';
 const WORKFLOW_REF  = process.env.GH_WORKFLOW_REF  || 'main';
