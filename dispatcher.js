@@ -123,13 +123,12 @@ function auth(req, res, next) {
 }
 
 // ── POST /dispatch ───────────────────────────────────────────────────────────
-// Chamado pelo server.js em substituição do processJob local.
-// Body: { job_id, video_url?, seg_duration?, max_encode_height?,
-//          warm_concurrency?, metadata? }
+// FIX: thumbnail_url adicionado ao destructuring e aos inputs do workflow.
 app.post('/dispatch', auth, async (req, res) => {
   const {
     job_id,
     video_url         = '',
+    thumbnail_url     = '',   // ← FIX: estava ausente, thumbnail nunca chegava ao workflow
     seg_duration      = '4',
     max_encode_height = '720',
     warm_concurrency  = '8',
@@ -144,6 +143,7 @@ app.post('/dispatch', auth, async (req, res) => {
   const inputs = {
     job_id,
     video_url,
+    thumbnail_url,            // ← FIX: agora enviado para o workflow
     seg_duration:      String(seg_duration),
     max_encode_height: String(max_encode_height),
     warm_concurrency:  String(warm_concurrency),
@@ -169,7 +169,7 @@ app.post('/dispatch', auth, async (req, res) => {
       inputs,
     });
 
-    console.log(`[DISPATCH] job=${job_id} → ${account.owner} (active=${account.activeJobs})`);
+    console.log(`[DISPATCH] job=${job_id} → ${account.owner} (active=${account.activeJobs}) thumb=${thumbnail_url ? '✓' : '—'}`);
     res.json({ ok: true, job_id, account: account.owner, account_id: account.id });
 
   } catch (e) {
@@ -234,23 +234,40 @@ app.get('/health', (_, res) => {
 
 // ── Keep-alive — evita que o Render (free tier) adormeça ────────────────────
 // Faz self-ping ao /health a cada 14 minutos (Render dorme após 15min idle).
-// Activo se RENDER=true (injectado automaticamente) ou KEEP_ALIVE=true no .env.
+// FIX: também faz ping à PIPELINE_API para evitar cold start no momento do registo.
 function startKeepAlive(port) {
-  const interval = 14 * 60 * 1000; // 14 minutos
-  const selfUrl  = process.env.RENDER_EXTERNAL_URL
+  const interval  = 14 * 60 * 1000; // 14 minutos
+  const selfUrl   = process.env.RENDER_EXTERNAL_URL
     ? `${process.env.RENDER_EXTERNAL_URL}/health`
     : `http://localhost:${port}/health`;
+  const pipelineUrl = process.env.PIPELINE_API
+    ? `${process.env.PIPELINE_API.replace(/\/$/, '')}/health`
+    : null;
 
   setInterval(async () => {
+    // Ping ao próprio dispatcher
     try {
-      const res = await fetch(selfUrl);
-      console.log(`[keep-alive] ping → ${res.status} (${new Date().toISOString()})`);
+      const r = await fetch(selfUrl);
+      console.log(`[keep-alive] dispatcher → ${r.status} (${new Date().toISOString()})`);
     } catch (e) {
-      console.warn(`[keep-alive] ping falhou: ${e.message}`);
+      console.warn(`[keep-alive] dispatcher ping falhou: ${e.message}`);
+    }
+
+    // FIX: Ping à pipeline API para mantê-la acordada e a ligação Turso activa.
+    // Sem isto, após 15min idle o Render adormece e o primeiro registo recebe 500
+    // porque o servidor acorda mas a ligação à BD (Turso/libsql) ainda não está pronta.
+    if (pipelineUrl) {
+      try {
+        const r = await fetch(pipelineUrl, { signal: AbortSignal.timeout(10000) });
+        console.log(`[keep-alive] pipeline → ${r.status}`);
+      } catch (e) {
+        console.warn(`[keep-alive] pipeline ping falhou: ${e.message}`);
+      }
     }
   }, interval);
 
   console.log(`  ✓ Keep-alive activo — ping cada 14min → ${selfUrl}`);
+  if (pipelineUrl) console.log(`  ✓ Keep-alive pipeline → ${pipelineUrl}`);
 }
 
 // ── Start ────────────────────────────────────────────────────────────────────
